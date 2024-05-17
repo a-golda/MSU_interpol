@@ -25,21 +25,19 @@ from lightning.pytorch.callbacks import Callback, LearningRateMonitor, ModelChec
 wandb.login()
 
 # params
-project_name = "MSU_interpol_unified_notebooks"
+project_name = "MSU_interpol_unified_notebooks_structure_functions"
 
-logger_path = './wandb_local_logs'
-data_path = '../data/clasdb_pi_plus_n.txt'
+logger_path = '../wandb_local_logs'
+data_path = '../../data/df_with_ABC.csv'
 
 hyperparams_dict = {
     'scale_data': False,
     'augment': False,
-    'add_abc': False,
     'add_weights': False,
-    'abc_loss_factor': 100,
     'augment_factor': 20,
     'test_size': 0.1,
     'batch_size': 256,
-    'net_architecture': [5, 60, 80, 100, 120, 140, 240, 340, 440, 640, 2000, 1040, 640, 340, 240, 140, 100, 80, 60, 20, 1],
+    'net_architecture': [5, 60, 80, 100, 120, 140, 240, 340, 440, 640, 2000, 1040, 640, 340, 240, 140, 100, 80, 60, 20, 3],
     'activation_function': nn.ReLU(),
     'loss_func': 'RMSELoss()',
     'optim_func': torch.optim.Adam,
@@ -58,27 +56,9 @@ class RMSELoss(torch.nn.Module):
     def __init__(self):
         super(RMSELoss, self).__init__()
 
-    @staticmethod
-    def func_cos(x, a, b, c):
-        return a + b * torch.cos(2 * x) + c * torch.cos(x)
-
-    def forward(self, x, y_hat, y, w, A, B, C):
-        if hyperparams_dict.get('add_abc') and hyperparams_dict.get('add_weights'):
-            phi = x[:, 4]
-            criterion = torch.sqrt(torch.mean(w * (y_hat - y) ** 2) / torch.sum(w)) + \
-                        torch.mul(hyperparams_dict.get('abc_loss_factor'),
-                                  torch.mean(torch.abs(w * y - self.func_cos(phi, A, B, C))) / torch.sum(w))
-        elif hyperparams_dict.get('add_abc') and not hyperparams_dict.get('add_weights'):
-            phi = x[:, 4]
-            criterion = torch.sqrt(torch.mean((y_hat - y) ** 2)) + \
-                        torch.mul(hyperparams_dict.get('abc_loss_factor'),
-                                  torch.mean(torch.abs(y - self.func_cos(phi, A, B, C))))
-        elif not hyperparams_dict.get('add_abc') and hyperparams_dict.get('add_weights'):
-            criterion = torch.sqrt(torch.mean(w * (y_hat - y) ** 2) / torch.sum(w))
-        else:
-            criterion = torch.sqrt(torch.mean((y_hat - y)** 2))
+    def forward(self, y_hat, y):
+        criterion = torch.sqrt(torch.mean((y_hat - y)** 2))
         return criterion
-
 
 global_losss_function = RMSELoss()
 
@@ -100,23 +80,15 @@ logging.basicConfig(encoding='utf-8',
 
 # define dataset and net
 class InterpolDataSet(Dataset):
-    def __init__(self, features, labels, weights, A, B, C):
+    def __init__(self, features, labels):
         self.features = features
         self.labels = labels
-        self.weights = weights
-        self.A = A
-        self.B = B
-        self.C = C
         self.len = len(labels)
 
     def __getitem__(self, index):
         feature = self.features[index]
         label = self.labels[index]
-        weights = self.weights[index]
-        A = self.A[index]
-        B = self.B[index]
-        C = self.C[index]
-        return feature, label, weights, A, B, C
+        return feature, label
 
     def __len__(self):
         return self.len
@@ -137,105 +109,20 @@ class InterpolDataModule(pl.LightningDataModule):
                           'cos_theta': np.clip(
                               np.random.normal(loc=new_augm.cos_theta, scale=abs(new_augm.cos_theta / 30)), -1, 1),
                           'phi': np.clip(np.random.normal(loc=new_augm.phi, scale=new_augm.phi / 30), 0, 2 * np.pi),
-                          'dsigma_dOmega': np.random.normal(loc=new_augm.dsigma_dOmega, scale=new_augm.error / 3),
-                          'error': new_augm.error,
-                          'weight': new_augm.weight,
+                          'A': np.random.normal(loc=new_augm.A, scale=new_augm.A_error / 3),
+                          'B': np.random.normal(loc=new_augm.B, scale=new_augm.B_error / 3),
+                          'C': np.random.normal(loc=new_augm.C, scale=new_augm.C_error / 3)
                           })
-        if self.hyperparams.get('add_abc'):
-            augm['A'] = new_augm.A
-            augm['B'] = new_augm.B
-            augm['C'] = new_augm.C
-        else:
-            pass
         return augm
-
-    @staticmethod
-    def func_cos(x, a, b, c):
-        return a + b * np.cos(2 * x) + c * np.cos(x)
-
-    def get_abc(self, df, E_beam, Q2, W, cos_theta):
-        df_example_set = df[(df.Ebeam == E_beam) &
-                            (df.W == W) &
-                            (df.Q2 == Q2) &
-                            (df.cos_theta == cos_theta)].sort_values('phi')
-        # input data
-        xdata = df_example_set.phi
-        ydata = df_example_set.dsigma_dOmega
-        ydata_error = df_example_set.error
-        # fitting the data
-        popt, pcov = curve_fit(self.func_cos, xdata, ydata, sigma=ydata_error, absolute_sigma=True)
-        a, b, c = popt[0], popt[1], popt[2]
-
-        return a, b, c
 
     def setup(self, stage):
         # data reading and preprocessing
-        df = pd.read_csv(data_path, delimiter='\t', header=None)
-        df.columns = ['Ebeam', 'W', 'Q2', 'cos_theta', 'phi', 'dsigma_dOmega', 'error', 'id']
-        df.loc[8314:65671, 'Ebeam'] = 5.754  # peculiarity of this dataset.
-        df = df[~((df.Ebeam == 5.754) & (~df.Q2.isin([1.715, 2.050, 2.445, 2.915, 3.480, 4.155])))] # peculiarity of this dataset #2
-        df['phi'] = df.phi.apply(lambda x: math.radians(x))
-        df['weight'] = df['error'].apply(lambda x: x and 1 / x or 100)  # x and 1 / x or 100  is just a reversed error but with validation 1/0 error in this case it will return 100
-        df = df.drop('id', axis=1)
-        df = df.drop_duplicates(subset=['Ebeam', 'W', 'Q2', 'cos_theta', 'phi'])
+        df = pd.read_csv(data_path)
 
-        # TODO: critical
-        # Ebeam = [5.754]
-        # Q2 = [1.72, 2.05, 2.44, 2.91, 3.48, 4.155]
-        # df = df[(df.Q2.isin(Q2)) & (df.Ebeam.isin(Ebeam))]
-
-        # Ebeam = [5.499]
-        # W = [1.830, 1.890, 1.780, 1.950, 2.010, 1.620, 1.660, 1.700, 1.740]
-        # df = df[df.Ebeam.isin(Ebeam) & (df.W.isin(W))]
-
-        # Ebeam = [1.515]
-        # df = df[df.Ebeam.isin(Ebeam)]
-
-        # #train test split
         feature_columns = ['Ebeam', 'W', 'Q2', 'cos_theta', 'phi']
 
-        df['A'] = None
-        df['B'] = None
-        df['C'] = None
-        feature_columns_with_additional = ['Ebeam', 'W', 'Q2', 'cos_theta', 'phi', 'weight', 'A', 'B', 'C']
-
-        if self.hyperparams.get('add_abc'):
-            for Ebeam in df.Ebeam.unique():
-                for Q2 in tqdm.tqdm(df[df.Ebeam == Ebeam].Q2.unique(), desc='ABC Q cycle'):
-                    for W in df[(df.Ebeam == Ebeam) & (df.Q2 == Q2)].W.unique():
-                        for cos_theta in df[(df.Ebeam == Ebeam) & (df.Q2 == Q2) & (df.W == W)].cos_theta.unique():
-                            try:
-                                if df.loc[(df.Ebeam == Ebeam) & (df.Q2 == Q2) & (df.W == W) & (
-                                        df.cos_theta == cos_theta), 'A'].iloc[0] is None:
-                                    A, B, C = self.get_abc(df, Ebeam, Q2, W, cos_theta)
-                                    df.loc[(df.Ebeam == Ebeam) & (df.Q2 == Q2) & (df.W == W) & (
-                                            df.cos_theta == cos_theta), 'A'] = A
-                                    df.loc[(df.Ebeam == Ebeam) & (df.Q2 == Q2) & (df.W == W) & (
-                                            df.cos_theta == cos_theta), 'B'] = B
-                                    df.loc[(df.Ebeam == Ebeam) & (df.Q2 == Q2) & (df.W == W) & (
-                                            df.cos_theta == cos_theta), 'C'] = C
-                                else:
-                                    pass
-                            except Exception as e:
-                                df.loc[(df.Ebeam == Ebeam) & (df.Q2 == Q2) & (df.W == W) & (
-                                        df.cos_theta == cos_theta), 'A'] = 0
-                                df.loc[(df.Ebeam == Ebeam) & (df.Q2 == Q2) & (df.W == W) & (
-                                        df.cos_theta == cos_theta), 'B'] = 0
-                                df.loc[(df.Ebeam == Ebeam) & (df.Q2 == Q2) & (df.W == W) & (
-                                        df.cos_theta == cos_theta), 'C'] = 0
-        else:
-            pass
-
-        feature_data = df[feature_columns_with_additional]
-        label_data = df['dsigma_dOmega']
-
-        if self.hyperparams.get('scale_data'):
-            scaler_feature = StandardScaler()
-            scaler_target = StandardScaler()
-            feature_data = scaler_feature.fit_transform(feature_data)
-            label_data = scaler_target.fit_transform(label_data.values.reshape(-1, 1))
-        else:
-            pass
+        feature_data = df[feature_columns]
+        label_data = df[['A', 'B', 'C']]
 
         if self.hyperparams.get('augment'):
             aug_series_list = []
@@ -258,21 +145,10 @@ class InterpolDataModule(pl.LightningDataModule):
 
         self.train_dataset = InterpolDataSet(
             torch.tensor(train_feature_data[feature_columns].values, dtype=torch.float32),
-            torch.tensor(train_label_data.values, dtype=torch.float32),
-            torch.tensor(train_feature_data['weight'].values, dtype=torch.float32),
-            torch.tensor(train_feature_data['A'].astype(float).values, dtype=torch.float32),
-            torch.tensor(train_feature_data['B'].astype(float).values, dtype=torch.float32),
-            torch.tensor(train_feature_data['C'].astype(float).values, dtype=torch.float32))
+            torch.tensor(train_label_data.values, dtype=torch.float32))
 
         self.val_dataset = InterpolDataSet(torch.tensor(val_feature_data[feature_columns].values, dtype=torch.float32),
-                                           torch.tensor(val_label_data.values, dtype=torch.float32),
-                                           torch.tensor(val_feature_data['weight'].values, dtype=torch.float32),
-                                           torch.tensor(train_feature_data['A'].astype(float).values,
-                                                        dtype=torch.float32),
-                                           torch.tensor(train_feature_data['B'].astype(float).values,
-                                                        dtype=torch.float32),
-                                           torch.tensor(train_feature_data['C'].astype(float).values,
-                                                        dtype=torch.float32))
+                                           torch.tensor(val_label_data.values, dtype=torch.float32))
 
     def train_dataloader(self):
         return DataLoader(dataset=self.train_dataset, batch_size=self.hyperparams.get('batch_size'), shuffle=False,
@@ -336,7 +212,7 @@ class InterpolRegressor(pl.LightningModule):
         y_hat = self.forward(x)
 
         loss = self.loss_func
-        self.train_loss = loss.forward(x=x, y_hat=y_hat.reshape(-1), y=y, w=w, A=A, B=B, C=C)
+        self.train_loss = loss.forward(y_hat=y_hat.reshape(-1), y=y)
         self.train_mae = self.mae(y_hat.reshape(-1), y)
 
         self.log('train_loss', self.train_loss, batch_size=self.hyperparams['batch_size'],
@@ -352,7 +228,7 @@ class InterpolRegressor(pl.LightningModule):
         y_hat = self.forward(x)
 
         loss = self.loss_func
-        self.val_loss = loss.forward(x=x, y_hat=y_hat.reshape(-1), y=y, w=w, A=A, B=B, C=C)
+        self.val_loss = loss.forward(y_hat=y_hat.reshape(-1), y=y)
         self.val_mae = self.mae(y_hat.reshape(-1), y)
 
         self.log('val_loss', self.val_loss, batch_size=self.hyperparams['batch_size'],
@@ -408,7 +284,6 @@ class InterpolRegressor(pl.LightningModule):
 data_module = InterpolDataModule(hyperparams=hyperparams_dict)
 model = InterpolRegressor(hyperparams=hyperparams_dict)
 trainer = pl.Trainer(max_epochs=hyperparams_dict.get('max_epochs'),
-
                      accelerator='cpu',
                      logger=wandb_logger,
                      enable_progress_bar=False)
