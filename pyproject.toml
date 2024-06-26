@@ -4,7 +4,6 @@ version = "0.1.0"
 description = ""
 authors = ["GOLoDovkA-A <mr.andrey.golda@mail.ru>"]
 readme = "README.md"
-packages = [{include = "msu_interpol"}]
 
 [tool.poetry.dependencies]
 python = "^3.11"

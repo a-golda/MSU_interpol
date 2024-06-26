@@ -118,6 +118,7 @@ class InterpolDataModule(pl.LightningDataModule):
     def setup(self, stage):
         # data reading and preprocessing
         df = pd.read_csv(data_path)
+        df = df.dropna()
 
         feature_columns = ['Ebeam', 'W', 'Q2', 'cos_theta', 'phi']
 
@@ -208,12 +209,12 @@ class InterpolRegressor(pl.LightningModule):
         return self.net(x)
 
     def training_step(self, batch, batch_idx):
-        x, y, w, A, B, C = batch
+        x, y = batch
         y_hat = self.forward(x)
 
         loss = self.loss_func
-        self.train_loss = loss.forward(y_hat=y_hat.reshape(-1), y=y)
-        self.train_mae = self.mae(y_hat.reshape(-1), y)
+        self.train_loss = loss.forward(y_hat=y_hat.reshape(-1), y=y.reshape(-1))
+        self.train_mae = self.mae(y_hat.reshape(-1), y.reshape(-1))
 
         self.log('train_loss', self.train_loss, batch_size=self.hyperparams['batch_size'],
                  on_step=False, on_epoch=True, prog_bar=True, sync_dist=True, logger=True)
@@ -224,12 +225,12 @@ class InterpolRegressor(pl.LightningModule):
         return self.train_loss
 
     def validation_step(self, batch, batch_idx):
-        x, y, w, A, B, C = batch
+        x, y = batch
         y_hat = self.forward(x)
 
         loss = self.loss_func
-        self.val_loss = loss.forward(y_hat=y_hat.reshape(-1), y=y)
-        self.val_mae = self.mae(y_hat.reshape(-1), y)
+        self.val_loss = loss.forward(y_hat=y_hat.reshape(-1), y=y.reshape(-1))
+        self.val_mae = self.mae(y_hat.reshape(-1), y.reshape(-1))
 
         self.log('val_loss', self.val_loss, batch_size=self.hyperparams['batch_size'],
                  on_step=False, on_epoch=True, prog_bar=True, sync_dist=True, logger=True)

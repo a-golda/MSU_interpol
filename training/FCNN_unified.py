@@ -32,11 +32,11 @@ data_path = '../data/clasdb_pi_plus_n.txt'
 
 hyperparams_dict = {
     'scale_data': False,
-    'augment': False,
+    'augment': True,
     'add_abc': False,
     'add_weights': False,
-    'abc_loss_factor': 100,
-    'augment_factor': 20,
+    'abc_loss_factor': None,
+    'augment_factor': 25,
     'test_size': 0.1,
     'batch_size': 256,
     'net_architecture': [5, 60, 80, 100, 120, 140, 240, 340, 440, 640, 2000, 1040, 640, 340, 240, 140, 100, 80, 60, 20, 1],
@@ -45,11 +45,11 @@ hyperparams_dict = {
     'optim_func': torch.optim.Adam,
     'max_epochs': 2000,
     'es_min_delta': 0.00001,
-    'es_patience': 50,
+    'es_patience': 20,
     'lr': 0.001,
     'lr_factor': 0.5,
     'lr_patience': 5,
-    'lr_cooldown': 20,
+    'lr_cooldown': 15,
 }
 
 
@@ -188,8 +188,8 @@ class InterpolDataModule(pl.LightningDataModule):
         # W = [1.830, 1.890, 1.780, 1.950, 2.010, 1.620, 1.660, 1.700, 1.740]
         # df = df[df.Ebeam.isin(Ebeam) & (df.W.isin(W))]
 
-        # Ebeam = [1.515]
-        # df = df[df.Ebeam.isin(Ebeam)]
+        Ebeam = [1.515]
+        df = df[df.Ebeam.isin(Ebeam)]
 
         # #train test split
         feature_columns = ['Ebeam', 'W', 'Q2', 'cos_theta', 'phi']
