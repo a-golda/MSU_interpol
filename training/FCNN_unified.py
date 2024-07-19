@@ -13,7 +13,6 @@ import lightning.pytorch as pl
 
 from scipy.optimize import curve_fit
 from torchmetrics import MeanAbsoluteError
-from sklearn.metrics import mean_squared_error
 from torch.utils.data import Dataset, DataLoader
 from sklearn.preprocessing import StandardScaler
 from lightning.pytorch.loggers import WandbLogger
@@ -31,6 +30,7 @@ logger_path = './wandb_local_logs'
 data_path = '../data/clasdb_pi_plus_n.txt'
 
 hyperparams_dict = {
+    'energy': 1.515,
     'scale_data': False,
     'augment': True,
     'add_abc': False,
@@ -179,17 +179,7 @@ class InterpolDataModule(pl.LightningDataModule):
         df = df.drop('id', axis=1)
         df = df.drop_duplicates(subset=['Ebeam', 'W', 'Q2', 'cos_theta', 'phi'])
 
-        # TODO: critical
-        # Ebeam = [5.754]
-        # Q2 = [1.72, 2.05, 2.44, 2.91, 3.48, 4.155]
-        # df = df[(df.Q2.isin(Q2)) & (df.Ebeam.isin(Ebeam))]
-
-        # Ebeam = [5.499]
-        # W = [1.830, 1.890, 1.780, 1.950, 2.010, 1.620, 1.660, 1.700, 1.740]
-        # df = df[df.Ebeam.isin(Ebeam) & (df.W.isin(W))]
-
-        Ebeam = [1.515]
-        df = df[df.Ebeam.isin(Ebeam)]
+        df = df[df.Ebeam==hyperparams_dict.get('energy')]
 
         # #train test split
         feature_columns = ['Ebeam', 'W', 'Q2', 'cos_theta', 'phi']
