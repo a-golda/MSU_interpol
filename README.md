@@ -1,3 +1,10 @@
+Content:
+
+FCNN_unified.ipynb - main file with training script
+checks_unified.ipynb - all the validation and analysis for this projects 
+
+Abstact:
+
 Artificial Intelligence in the task of prediction of differential cross sections and structural functions of pion-proton production in the resonance region. 
 
 Golda Andrey Vasilyevich
