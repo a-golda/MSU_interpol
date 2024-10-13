@@ -25,7 +25,7 @@ from lightning.pytorch.callbacks import Callback, LearningRateMonitor, ModelChec
 
 
 hyperparams_dict = {
-        'energy': 1.515,
+        'energy': 5.754,
         'scale_data': False,
         'augment': False,
         'add_abc': False,
