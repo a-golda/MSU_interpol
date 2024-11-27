@@ -20,6 +20,7 @@ pytorch-lightning = "^2.3.3"
 torchmetrics = "^1.4.0"
 tqdm = "^4.66.4"
 lightning = "^2.3.3"
+plotly = "^5.20.0"
 
 [build-system]
 requires = ["poetry-core"]

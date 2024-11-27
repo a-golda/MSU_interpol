@@ -8,6 +8,7 @@ import logging
 import pandas as pd
 import torch.nn as nn
 import lightning.pytorch as pl
+import matplotlib.pyplot as plt
 
 from torch.utils.data import Dataset, DataLoader
 from lightning.pytorch.loggers import WandbLogger
@@ -38,7 +39,7 @@ logger_full_path = os.path.join(logger_path, project_name, new_experiment_name)
 
 os.makedirs(logger_full_path, exist_ok=True)
 logging.basicConfig(encoding='utf-8',
-                    level=logging.DEBUG,
+                    level=logging.INFO,
                     format='%(asctime)s : %(levelname)s : %(message)s',
                     handlers=[logging.FileHandler(os.path.join(logger_full_path, 'logs.log'), mode='w'),
                               logging.StreamHandler(sys.stdout)],
@@ -53,7 +54,7 @@ hyperparams = {
     'net_architecture': [5, 60, 80, 100, 120, 140, 240, 340, 440, 640, 2000, 1040, 640, 340, 240, 140, 100, 80, 60, 20, 1],
     'activation_function': nn.ReLU(),
     'optim_func': torch.optim.Adam,
-    'max_epochs': 20,
+    'max_epochs': 2,
     'es_min_delta': 0.00001,
     'es_patience': 20,
     'lr': 0.001,
@@ -62,6 +63,7 @@ hyperparams = {
     'lr_cooldown': 15
 }
 
+logging.info(f"Hyperparams: {hyperparams}")
 
 # define dataset
 class InterpolDataSet(Dataset):
@@ -97,9 +99,13 @@ class InterpolDataModule(pl.LightningDataModule):
         df = df.drop('id', axis=1)
         df = df.drop_duplicates(subset=['Ebeam', 'W', 'Q2', 'cos_theta', 'phi'])
 
+        logging.info(f"Dataset size before processing: {df.shape}")
+
         # train test split
         feature_columns = ['Ebeam', 'W', 'Q2', 'cos_theta', 'phi']
         label_column = 'dsigma_dOmega'
+
+        logging.info(f"Dataset features: {feature_columns}")
 
         feature_data = df[feature_columns]
         label_data = df[label_column]
@@ -271,5 +277,9 @@ trainer = pl.Trainer(max_epochs=hyperparams.get('max_epochs'),
                      logger=wandb_logger,
                      enable_progress_bar=False)
 trainer.fit(model, data_module)
+
+plt.plot([1, 2, 3, 4])
+plt.ylabel("random numbers")
+wandb.log({"chart": plt})
 
 wandb.finish()
