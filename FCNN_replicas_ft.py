@@ -24,7 +24,7 @@ from lightning.pytorch.callbacks import Callback, LearningRateMonitor, ModelChec
 wandb.login()
 
 # params
-project_name = "MSU_interpol_unified_notebooks_replication"
+project_name = "MSU_interpol_unified_notebooks_replication_1"
 
 logger_path = './wandb_local_logs'
 data_path = './data/clasdb_pi_plus_n.txt'
@@ -368,7 +368,7 @@ class InterpolRegressor(pl.LightningModule):
                                             patience=self.hyperparams.get('es_patience'),
                                             verbose=True)
 
-        checkpoint_callback = ModelCheckpoint(save_top_k=3,
+        checkpoint_callback = ModelCheckpoint(save_top_k=1,
                                               monitor="val_loss",
                                               mode="min",
                                               dirpath=f"{logger_full_path}/checkpoints",

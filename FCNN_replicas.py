@@ -24,17 +24,17 @@ from lightning.pytorch.callbacks import Callback, LearningRateMonitor, ModelChec
 wandb.login()
 
 # params
-project_name = "MSU_interpol_unified_notebooks_replication"
+project_name = "MSU_interpol_unified_notebooks_replication_1"
 
 logger_path = './wandb_local_logs'
 data_path = './data/clasdb_pi_plus_n.txt'
 
-df_gl = pd.read_csv('data/replicas/df_replicas.csv')
+df_gl = pd.read_csv('/Users/andrey.golda/Documents/Study/MSU_interpol/data/replicas_new/df_replicas_new.csv')
 
 hyperparams_dict = {
     'energy': 5.754,
     'scale_data': False,
-    'augment': False,
+    'augment': True,
     'add_abc': False,
     'add_weights': False,
     'abc_loss_factor': None,
@@ -47,7 +47,7 @@ hyperparams_dict = {
     'optim_func': torch.optim.Adam,
     'max_epochs': 2000,
     'es_min_delta': 0.00001,
-    'es_patience': 10,
+    'es_patience': 20,
     'lr': 0.001,
     'lr_factor': 0.5,
     'lr_patience': 5,
@@ -424,4 +424,4 @@ for iteration in range(100):
 
     df_res = df_res.join(pd.concat(df_grid_parts_preds)[f'dsigma_dOmega_replica_prediction_{iteration}'])
     if iteration%5 == 0 or iteration == 99:
-        df_res.to_csv(f"./data/replicas/df_replicas_{iteration}.csv")
+        df_res.to_csv(f"./data/replicas_new/df_replicas_{iteration}.csv")

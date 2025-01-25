@@ -1,0 +1,27 @@
+[tool.poetry]
+name = "msu-interpol"
+version = "0.1.0"
+description = "Main project related to cross section prediction with CLAS experiment"
+authors = ["GOLoDovkA-A <mr.andrey.golda@mail.ru>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+jupyter = "^1.0.0"
+wandb = "^0.16.1"
+numpy = "^1.1.0"
+pandas = "^2.1.2"
+scikit-learn = "^1.0.2"
+matplotlib = "^3.8.2"
+xgboost = "^2.1.0"
+seaborn = "^0.13.2"
+torch = "^2.3.1"
+pytorch-lightning = "^2.3.3"
+torchmetrics = "^1.4.0"
+tqdm = "^4.66.4"
+lightning = "^2.3.3"
+plotly = "^5.20.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
