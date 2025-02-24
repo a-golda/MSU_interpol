@@ -24,12 +24,12 @@ from lightning.pytorch.callbacks import Callback, LearningRateMonitor, ModelChec
 wandb.login()
 
 # params
-project_name = "MSU_interpol_unified_notebooks_replication_1"
+project_name = "MSU_interpol_maid"
 
 logger_path = './wandb_local_logs'
-data_path = './data/clasdb_pi_plus_n.txt'
+# data_path = './data/clasdb_pi_plus_n.txt'
 
-df_gl = pd.read_csv('/Users/andrey.golda/Documents/Study/MSU_interpol/data/replicas_new/df_replicas_new.csv')
+df_gl = pd.read_csv('/Users/andrey.golda/Documents/Study/clas_sinp/maid_interpolate/cache/df_maid_as_exp.csv')
 
 hyperparams_dict = {
     'energy': 5.754,
@@ -106,13 +106,12 @@ class InterpolDataSet(Dataset):
 
 
 class InterpolDataModule(pl.LightningDataModule):
-    def __init__(self, hyperparams, iteration):
+    def __init__(self, hyperparams):
         super().__init__()
         self.df = None
         self.hyperparams = hyperparams
         self.train_dataset = None
         self.val_dataset = None
-        self.iteration = iteration
 
     def augment(self, new_augm):
         augm = pd.Series({'Ebeam': np.random.normal(loc=new_augm.Ebeam, scale=new_augm.Ebeam / 30),
@@ -160,8 +159,14 @@ class InterpolDataModule(pl.LightningDataModule):
         # data reading and preprocessing
         df = df_gl.copy()
 
+        df['cos_phi'] = df['phi'].apply(lambda x: np.cos(x))
+        df['sin_phi'] = df['phi'].apply(lambda x: np.sin(x))
+        df['theta'] = np.arccos(df['cos_theta'])
+        df['sin_theta'] = np.sin(df.theta)
+
         df['weight'] = df['error'].apply(lambda x: x and 1 / x or 100)
-        target_column_name = f'dsigma_dOmega_replica_{self.iteration}'
+        target_column_name = 'dsigma_dOmega_maid'
+
         df = df[['Ebeam', 'W', 'Q2', 'theta', 'cos_theta', 'sin_theta', 'phi', 'cos_phi', 'sin_phi', 'error', 'weight', target_column_name]]
         df['dsigma_dOmega'] = df[target_column_name]
         df.drop(target_column_name, axis=1, inplace=True)
@@ -380,48 +385,28 @@ class InterpolRegressor(pl.LightningModule):
                 }
 
 
-df_res = df_gl.copy()
+global_losss_function = RMSELoss()
 
-for iteration in range(100):
-    global_losss_function = RMSELoss()
+# set up loggers and wandb
+wandb_logger = WandbLogger(project=project_name,
+                           save_dir=logger_path)
+exp_name = wandb_logger.experiment.name
 
-    # set up loggers and wandb
-    wandb_logger = WandbLogger(project=project_name,
-                               save_dir=logger_path)
-    exp_name = wandb_logger.experiment.name
+logger_full_path = os.path.join(logger_path, project_name, exp_name)
 
-    logger_full_path = os.path.join(logger_path, project_name, exp_name)
+os.makedirs(logger_full_path, exist_ok=True)
+logging.basicConfig(encoding='utf-8',
+                    level=logging.DEBUG,
+                    format='%(asctime)s : %(levelname)s : %(message)s',
+                    handlers=[logging.FileHandler(os.path.join(logger_full_path, 'logs.log'), mode='w'),
+                              logging.StreamHandler(sys.stdout)],
+                    force=True)
 
-    os.makedirs(logger_full_path, exist_ok=True)
-    logging.basicConfig(encoding='utf-8',
-                        level=logging.DEBUG,
-                        format='%(asctime)s : %(levelname)s : %(message)s',
-                        handlers=[logging.FileHandler(os.path.join(logger_full_path, 'logs.log'), mode='w'),
-                                  logging.StreamHandler(sys.stdout)],
-                        force=True)
-
-    data_module = InterpolDataModule(hyperparams=hyperparams_dict, iteration=iteration)
-    model = InterpolRegressor(hyperparams=hyperparams_dict)
-    trainer = pl.Trainer(max_epochs=hyperparams_dict.get('max_epochs'),
-                         accelerator='gpu',
-                         logger=wandb_logger,
-                         enable_progress_bar=False)
-    trainer.fit(model, data_module)
-    wandb.finish()
-
-
-    df_grid_parts = np.array_split(df_gl,100)
-    df_grid_parts_preds = []
-    for df_grid_part in tqdm.tqdm(df_grid_parts):
-        df_grid_part_pred_for_pred = df_grid_part[
-            ['Ebeam', 'W', 'Q2', 'theta', 'cos_theta', 'sin_theta', 'phi', 'cos_phi', 'sin_phi']]
-        dsigma_dOmega_predicted = model.to('cpu').forward(
-            torch.tensor(df_grid_part_pred_for_pred.to_numpy(), dtype=torch.float32)).detach()
-
-        df_grid_part[f'dsigma_dOmega_replica_prediction_{iteration}'] = dsigma_dOmega_predicted
-        df_grid_part[f'dsigma_dOmega_replica_prediction_{iteration}'] = abs(df_grid_part[f'dsigma_dOmega_replica_prediction_{iteration}'])
-        df_grid_parts_preds.append(df_grid_part)
-
-    df_res = df_res.join(pd.concat(df_grid_parts_preds)[f'dsigma_dOmega_replica_prediction_{iteration}'])
-    if iteration%5 == 0 or iteration == 99:
-        df_res.to_csv(f"./data/replicas_new/df_replicas_{iteration}.csv")
+data_module = InterpolDataModule(hyperparams=hyperparams_dict)
+model = InterpolRegressor(hyperparams=hyperparams_dict)
+trainer = pl.Trainer(max_epochs=hyperparams_dict.get('max_epochs'),
+                     accelerator='gpu',
+                     logger=wandb_logger,
+                     enable_progress_bar=False)
+trainer.fit(model, data_module)
+wandb.finish()
