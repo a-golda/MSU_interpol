@@ -17,6 +17,8 @@ from lightning.pytorch.callbacks.early_stopping import EarlyStopping
 from lightning.pytorch.callbacks import Callback, LearningRateMonitor, ModelCheckpoint
 from torchmetrics import MeanAbsoluteError, MeanSquaredError
 
+nn.MSELoss()()
+
 # paths
 logger_path = './wandb_local_logs'
 data_path = './data/clasdb_pi_plus_n.txt'
