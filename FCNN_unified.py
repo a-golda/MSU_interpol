@@ -21,25 +21,25 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from lightning.pytorch.callbacks.early_stopping import EarlyStopping
 from lightning.pytorch.callbacks import Callback, LearningRateMonitor, ModelCheckpoint
 
-wandb.login()
+wandb.login(key="")
 
 # params
-project_name = "MSU_interpol_unified_notebooks"
+project_name = "MSU_interpol_reproduced"
 
 logger_path = './wandb_local_logs'
-data_path = '../data/clasdb_pi_plus_n.txt'
+data_path = './data/clasdb_pi_plus_n.txt'
 
 hyperparams_dict = {
-    'energy': 1.515,
-    'scale_data': False,
-    'augment': True,
+    'energy': 5.754,
+    'scale_data': True,
+    'augment': False,
     'add_abc': False,
-    'add_weights': False,
+    'add_weights': True,
     'abc_loss_factor': None,
     'augment_factor': 25,
     'test_size': 0.1,
     'batch_size': 256,
-    'net_architecture': [5, 60, 80, 100, 120, 140, 240, 340, 440, 640, 2000, 1040, 640, 340, 240, 140, 100, 80, 60, 20, 1],
+    'net_architecture': [5,60,80,100,120,140,240,340,440,640,2000,1040,640,340,240,140,100,80,60,20,1],
     'activation_function': nn.ReLU(),
     'loss_func': 'RMSELoss()',
     'optim_func': torch.optim.Adam,
@@ -129,6 +129,8 @@ class InterpolDataModule(pl.LightningDataModule):
         self.hyperparams = hyperparams
         self.train_dataset = None
         self.val_dataset = None
+        self.feature_scaler = StandardScaler()
+        self.target_scaler = StandardScaler()
 
     def augment(self, new_augm):
         augm = pd.Series({'Ebeam': np.random.normal(loc=new_augm.Ebeam, scale=new_augm.Ebeam / 30),
@@ -179,7 +181,10 @@ class InterpolDataModule(pl.LightningDataModule):
         df = df.drop('id', axis=1)
         df = df.drop_duplicates(subset=['Ebeam', 'W', 'Q2', 'cos_theta', 'phi'])
 
-        df = df[df.Ebeam==hyperparams_dict.get('energy')]
+        if isinstance(self.hyperparams.get('energy'), float):
+            df = df[df.Ebeam==hyperparams_dict.get('energy')]
+        else:
+            pass
 
         # #train test split
         feature_columns = ['Ebeam', 'W', 'Q2', 'cos_theta', 'phi']
@@ -220,10 +225,9 @@ class InterpolDataModule(pl.LightningDataModule):
         label_data = df['dsigma_dOmega']
 
         if self.hyperparams.get('scale_data'):
-            scaler_feature = StandardScaler()
-            scaler_target = StandardScaler()
-            feature_data = scaler_feature.fit_transform(feature_data)
-            label_data = scaler_target.fit_transform(label_data.values.reshape(-1, 1))
+            feature_data = pd.DataFrame(self.feature_scaler.fit_transform(feature_data),
+                                        columns=feature_columns_with_additional)
+            label_data = pd.Series(self.target_scaler.fit_transform(label_data.values.reshape(-1,1)).reshape(-1))
         else:
             pass
 
@@ -235,6 +239,9 @@ class InterpolDataModule(pl.LightningDataModule):
 
             aug_df = pd.DataFrame(aug_series_list)
             df = pd.concat([df, aug_df])
+
+            feature_data = df[feature_columns_with_additional]
+            label_data = df['dsigma_dOmega']
         else:
             pass
 
@@ -265,11 +272,11 @@ class InterpolDataModule(pl.LightningDataModule):
                                                         dtype=torch.float32))
 
     def train_dataloader(self):
-        return DataLoader(dataset=self.train_dataset, batch_size=self.hyperparams.get('batch_size'), shuffle=False,
+        return DataLoader(dataset=self.train_dataset, batch_size=self.hyperparams.get('batch_size'), shuffle=True,
                           num_workers=0)
 
     def val_dataloader(self):
-        return DataLoader(dataset=self.val_dataset, batch_size=self.hyperparams.get('batch_size'), shuffle=False,
+        return DataLoader(dataset=self.val_dataset, batch_size=self.hyperparams.get('batch_size'), shuffle=True,
                           num_workers=0)
 
 
@@ -292,8 +299,11 @@ class PrintCallbacks(Callback):
 
 
 class InterpolRegressor(pl.LightningModule):
-    def __init__(self, hyperparams):
+    def __init__(self, hyperparams, feature_scaler, target_scaler):
         super(InterpolRegressor, self).__init__()
+
+        self.feature_scaler=feature_scaler
+        self.target_scaler = target_scaler
 
         self.train_loss, self.train_mae, self.val_loss, self.val_mae = 0, 0, 0, 0
         self.hyperparams = hyperparams
@@ -327,7 +337,11 @@ class InterpolRegressor(pl.LightningModule):
 
         loss = self.loss_func
         self.train_loss = loss.forward(x=x, y_hat=y_hat.reshape(-1), y=y, w=w, A=A, B=B, C=C)
-        self.train_mae = self.mae(y_hat.reshape(-1), y)
+
+        y = y.cpu().detach().numpy().reshape(-1)
+        y = self.target_scaler.inverse_transform(y)
+        y_hat = self.target_scaler.inverse_transform(y_hat.cpu().detach().numpy()).reshape(-1)
+        self.train_mae = self.mae(y_hat, y)
 
         self.log('train_loss', self.train_loss, batch_size=self.hyperparams['batch_size'],
                  on_step=False, on_epoch=True, prog_bar=True, sync_dist=True, logger=True)
@@ -343,7 +357,11 @@ class InterpolRegressor(pl.LightningModule):
 
         loss = self.loss_func
         self.val_loss = loss.forward(x=x, y_hat=y_hat.reshape(-1), y=y, w=w, A=A, B=B, C=C)
-        self.val_mae = self.mae(y_hat.reshape(-1), y)
+
+        y = y.cpu().detach().numpy().reshape(-1)
+        y = self.target_scaler.inverse_transform(y)
+        y_hat = self.target_scaler.inverse_transform(y_hat.cpu().detach().numpy()).reshape(-1)
+        self.val_mae = self.mae(y_hat, y)
 
         self.log('val_loss', self.val_loss, batch_size=self.hyperparams['batch_size'],
                  on_step=False, on_epoch=True, prog_bar=True, sync_dist=True, logger=True)
@@ -383,8 +401,7 @@ class InterpolRegressor(pl.LightningModule):
                                      factor=self.hyperparams.get('lr_factor'),
                                      patience=self.hyperparams.get('lr_patience'),
                                      cooldown=self.hyperparams.get('lr_cooldown'),
-                                     threshold=0.01,
-                                     verbose=True)
+                                     threshold=0.01)
         return {"optimizer": optimizer,
                 "lr_scheduler": {
                     "scheduler": lr_optim,
@@ -396,10 +413,11 @@ class InterpolRegressor(pl.LightningModule):
 
 
 data_module = InterpolDataModule(hyperparams=hyperparams_dict)
-model = InterpolRegressor(hyperparams=hyperparams_dict)
+model = InterpolRegressor(hyperparams=hyperparams_dict,
+                          feature_scaler=data_module.feature_scaler,
+                          target_scaler=data_module.target_scaler)
 trainer = pl.Trainer(max_epochs=hyperparams_dict.get('max_epochs'),
-
-                     accelerator='cpu',
+                     accelerator='gpu',
                      logger=wandb_logger,
                      enable_progress_bar=False)
 trainer.fit(model, data_module)
