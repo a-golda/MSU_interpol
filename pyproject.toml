@@ -1,0 +1,27 @@
+[project]
+name = "msu-interpol"
+version = "0.1.0"
+description = "Read docs section"
+authors = [
+    {name = "many people and Andrey Golda"}
+]
+readme = "README.md"
+requires-python = "3.14"
+dependencies = [
+    "numpy",
+    "pandas",
+    "scipy",
+    "scikit-learn",
+    "tqdm",
+    "torch",
+    "torchmetrics",
+    "lightning",
+    "wandb",
+    "notebook (>=7.5.0,<8.0.0)",
+    "matplotlib"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
