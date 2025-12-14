@@ -21,8 +21,6 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from lightning.pytorch.callbacks.early_stopping import EarlyStopping
 from lightning.pytorch.callbacks import Callback, LearningRateMonitor, ModelCheckpoint
 
-wandb.login(key="")
-
 # params
 project_name = "MSU_interpol_reproduced"
 
